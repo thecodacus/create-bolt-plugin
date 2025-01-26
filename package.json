@@ -1,0 +1,29 @@
+{
+	"name": "create-bolt-plugin",
+	"version": "1.0.0",
+	"type": "module",
+	"bin": {
+		"create-bolt-plugin": "./dist/index.js"
+	},
+	"files": [
+		"dist"
+	],
+	"scripts": {
+		"build": "vite build",
+		"postbuild": "chmod +x dist/index.js",
+		"dev": "tsc -w",
+		"start": "node dist/index.js"
+	},
+	"dependencies": {
+		"chalk": "^5.3.0",
+		"commander": "^11.0.0",
+		"fs-extra": "^11.1.1",
+		"inquirer": "^9.2.7"
+	},
+	"devDependencies": {
+		"@types/fs-extra": "^11.0.4",
+		"@types/inquirer": "^9.0.7",
+		"typescript": "^5.7.3",
+		"vite": "^6.0.11"
+	}
+}
