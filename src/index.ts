@@ -91,38 +91,48 @@ async function createPluginFiles(answers: PluginAnswers) {
 
     await fs.writeJSON(path.join(pluginDir, 'plugin.json'), manifest, { spaces: 2 });
 
-    //build.js
-    const buildJs = `
-const esbuild = require('esbuild');
+    // Create pack.js
+    const packJs = `
+const AdmZip = require('adm-zip');
+const path = require('path');
+const fs = require('fs');
+const pkg = require('../package.json');
 
-async function build() {
-    try {
-        await esbuild.build({
-            entryPoints: ['src/index.${answers.typescript ? 'tsx' : 'jsx'}'],
-            bundle: true,
-            outfile: 'dist/index.js',
-            format: 'esm',
-            platform: 'browser',
-            target: 'es2020',
-            minify: true,
-            external: ['react', 'react-dom'], // Mark these as external since they'll be provided by the host app
-            loader: { // Handle various file types
-                '.js': 'jsx',
-                '.jsx': 'jsx',
-                '.ts': 'ts',
-                '.tsx': 'tsx'
-            }
-        });
-        console.log('Build complete ✨');
-    } catch (error) {
-        console.error('Build failed:', error);
-        process.exit(1);
+async function packPlugin() {
+    const zip = new AdmZip();
+    const manifest = require('../plugin.json');
+    const outputFile = \`\${ pkg.name }-\${ pkg.version }.zip\`;
+
+    // Add files specified in package.json 'files' array
+    for (const file of pkg.files) {
+        if (fs.existsSync(file)) {
+            zip.addLocalFile(file);
+        } else {
+            console.warn(\`Warning: File \${ file } specified in package.json 'files' does not exist\`);
+        }
     }
+
+    // Create the zip file
+    zip.writeZip(outputFile);
+    console.log(\`Plugin packed successfully: \${ outputFile }\`);
 }
 
-build();
-`;
-    await fs.writeFile(path.join(pluginDir, 'build.js'), buildJs);
+packPlugin().catch(console.error);
+`
+    await fs.ensureDir(path.join(pluginDir, 'scripts'));
+
+    // Write the pack script
+    await fs.writeFile(
+        path.join(pluginDir, 'scripts', 'pack.js'),
+        packJs
+    );
+
+    // Create README.md
+    await fs.writeFile(
+        path.join(pluginDir, 'README.md'),
+        `# ${answers.name}\n\nA plugin for bolt.diy`
+    );
+
 
     // Create package.json
     const packageJson = {
@@ -131,11 +141,14 @@ build();
         main: 'dist/index.js',
         scripts: {
             "build": answers.typescript ?
-                "tsc && esbuild src/index.tsx --bundle --outfile=dist/index.js --platform=browser --format=esm" :
-                "esbuild src/index.jsx --bundle --outfile=dist/index.js --platform=browser --format=esm",
+                "esbuild src/index.tsx --bundle --external:react --external:react-dom --outfile=dist/index.js --platform=browser --format=esm --minify" :
+                "esbuild src/index.jsx --bundle --external:react --external:react-dom --outfile=dist/index.js --platform=browser --format=esm --minify",
             "watch": answers.typescript ?
-                "tsc -w & esbuild src/index.tsx --bundle --outfile=dist/index.js --platform=browser --format=esm --watch" :
-                "esbuild src/index.jsx --bundle --outfile=dist/index.js --platform=browser --format=esm --watch"
+                "esbuild src/index.tsx --bundle --external:react --external:react-dom --outfile=dist/index.js --platform=browser --format=esm --watch" :
+                "esbuild src/index.jsx --bundle --external:react --external:react-dom --outfile=dist/index.js --platform=browser --format=esm --watch",
+            "type-check": answers.typescript ? "tsc --noEmit" : "echo \"No type checking needed\"",
+            "prepack": "npm run build",
+            "pack": "node scripts/pack.js"
         },
         dependencies: {
             'react': '^18.2.0',
@@ -143,13 +156,20 @@ build();
         },
         devDependencies: {
             'esbuild': '^0.19.0',
+            'adm-zip': '^0.5.10',
             ...(answers.typescript ? {
                 'typescript': '^5.0.0',
                 '@types/node': '^20.0.0',
                 '@types/react': '^18.2.0',
                 '@types/react-dom': '^18.2.0'
             } : {})
-        }
+        },
+        files: [
+            "dist/index.js",
+            "plugin.json",
+            "README.md",
+            // "LICENSE"
+        ]
     };
 
     await fs.writeJSON(path.join(pluginDir, 'package.json'), packageJson, { spaces: 2 });
@@ -247,9 +267,9 @@ export type CreatePlugin = (context: PluginContext) => Plugin;
 
 function generatePluginSource(answers: PluginAnswers): string {
     const imports = answers.typescript ?
-        `import { ReactElement } from 'react';
+        `import React, { ReactElement } from 'react';
 import { PluginContext, UIPluginContext, MiddlewareContext, CreatePlugin } from './types';` :
-        ``;
+        `import React from 'react';`;
 
     let source = `${imports}
 
